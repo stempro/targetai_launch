@@ -1,0 +1,46 @@
+[project]
+name = "targetai-launch-backend"
+version = "0.1.0"
+description = "TargetAI Launch Management Backend"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.6.0",
+    "azure-storage-blob>=12.24.0",
+    "azure-identity>=1.19.0",
+    "anthropic>=0.39.0",
+    "openai>=1.57.0",
+    "langgraph>=0.2.50",
+    "langchain>=0.3.11",
+    "langchain-anthropic>=0.3.0",
+    "langchain-openai>=0.2.11",
+    "mcp>=1.1.2",
+    "httpx>=0.28.0",
+    "python-dotenv>=1.0.0",
+    "pinecone-client>=5.0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.8.0",
+    "mypy>=1.13.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
