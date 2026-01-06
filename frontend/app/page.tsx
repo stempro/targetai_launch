@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { metricsApi, counselorsApi, timelineApi } from '@/lib/api';
-import { BarChart3, Users, TrendingUp, Calendar, Target, AlertCircle, MessageCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { BarChart3, Users, TrendingUp, Calendar, Target, AlertCircle, MessageCircle, ChevronDown, ChevronUp, BookMarked, Trash2, LogOut } from 'lucide-react';
 import { useActivityChat } from '@/contexts/ActivityChatContext';
+import Modal from '@/components/Modal';
+import { useRouter } from 'next/navigation';
 
 export default function Dashboard() {
   const [metrics, setMetrics] = useState<any>(null);
@@ -12,7 +14,8 @@ export default function Dashboard() {
   const [agentInsights, setAgentInsights] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [metricsExpanded, setMetricsExpanded] = useState(false);
-  const { openChat } = useActivityChat();
+  const { openChat, isAnchored } = useActivityChat();
+  const router = useRouter();
 
   useEffect(() => {
     loadDashboardData();
@@ -46,6 +49,16 @@ export default function Dashboard() {
     }
   };
 
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      router.push('/login');
+      router.refresh();
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -55,7 +68,11 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div
+      className={`min-h-screen bg-gray-50 transition-all duration-300 ${
+        isAnchored ? 'md:mr-[600px] max-md:mb-[50vh]' : ''
+      }`}
+    >
       {/* Header */}
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -68,12 +85,22 @@ export default function Dashboard() {
                   : 'Not initialized'}
               </p>
             </div>
-            <button
-              onClick={runInsightsAgent}
-              className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
-            >
-              Get AI Insights
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={runInsightsAgent}
+                className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
+              >
+                Get AI Insights
+              </button>
+              <button
+                onClick={handleLogout}
+                className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition-colors flex items-center gap-2"
+                title="Logout"
+              >
+                <LogOut className="w-4 h-4" />
+                Logout
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -380,6 +407,209 @@ function QuickActionCard({
   );
 }
 
+function DeleteConfirmationModal({
+  isOpen,
+  onClose,
+  onConfirm,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center">
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+        onClick={onClose}
+      />
+
+      {/* Modal */}
+      <div
+        className="relative bg-white rounded-lg shadow-2xl max-w-md w-full mx-4 transform transition-all"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-red-200">
+          <h3 className="text-lg font-semibold text-gray-900">Confirm Delete</h3>
+        </div>
+
+        {/* Body */}
+        <div className="px-6 py-4 bg-red-50 border-t border-b border-red-200">
+          <p className="text-red-800 text-sm">
+            Are you sure you want to delete this saved tip? This action cannot be undone.
+          </p>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-6 py-2 rounded-lg transition-colors font-medium"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg transition-colors font-medium"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SavedTips({ taskId }: { taskId: string }) {
+  const [tips, setTips] = useState<any[]>([]);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [deleteModalState, setDeleteModalState] = useState<{
+    isOpen: boolean;
+    tipIndex: number | null;
+  }>({
+    isOpen: false,
+    tipIndex: null,
+  });
+  const [successModal, setSuccessModal] = useState<{
+    isOpen: boolean;
+    message: string;
+  }>({
+    isOpen: false,
+    message: '',
+  });
+
+  const loadTips = async () => {
+    try {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${API_BASE_URL}/api/chat/activity/tips/${taskId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setTips(data.tips || []);
+      }
+    } catch (error) {
+      console.error('Error loading tips:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteClick = (index: number) => {
+    setDeleteModalState({
+      isOpen: true,
+      tipIndex: index,
+    });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (deleteModalState.tipIndex === null) return;
+
+    try {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const response = await fetch(
+        `${API_BASE_URL}/api/chat/activity/tips/${taskId}/${deleteModalState.tipIndex}`,
+        {
+          method: 'DELETE',
+        }
+      );
+
+      if (response.ok) {
+        setDeleteModalState({ isOpen: false, tipIndex: null });
+        setSuccessModal({
+          isOpen: true,
+          message: 'Tip deleted successfully!',
+        });
+        await loadTips(); // Reload tips
+      }
+    } catch (error) {
+      console.error('Error deleting tip:', error);
+      alert('Failed to delete tip. Please try again.');
+    }
+  };
+
+  useEffect(() => {
+    loadTips();
+
+    // Refresh tips every 5 seconds when chat is open
+    const interval = setInterval(() => {
+      loadTips();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [taskId]);
+
+  if (loading) {
+    return null;
+  }
+
+  if (tips.length === 0) {
+    return null;
+  }
+
+  const formatTimestamp = (timestamp: string) => {
+    const date = new Date(timestamp);
+    return date.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  };
+
+  return (
+    <div className="ml-5 pl-4 border-l-2 border-purple-200">
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="flex items-center gap-2 text-sm text-purple-600 hover:text-purple-700 font-medium"
+      >
+        <BookMarked className="w-4 h-4" />
+        <span>Saved Tips ({tips.length})</span>
+        <ChevronDown className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+      </button>
+      {isExpanded && (
+        <div className="mt-2 space-y-3">
+          {tips.map((tip, idx) => (
+            <div key={idx} className="bg-purple-50 rounded-lg p-3 border border-purple-100 relative group">
+              <button
+                onClick={() => handleDeleteClick(idx)}
+                className="absolute top-2 right-2 p-1 text-red-500 hover:text-red-700 hover:bg-red-100 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                title="Delete this tip"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+              <div className="text-xs text-purple-600 font-medium mb-1">
+                {formatTimestamp(tip.timestamp)}
+              </div>
+              <div className="text-sm text-gray-700 whitespace-pre-wrap pr-8">
+                {tip.content}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmationModal
+        isOpen={deleteModalState.isOpen}
+        onClose={() => setDeleteModalState({ isOpen: false, tipIndex: null })}
+        onConfirm={handleConfirmDelete}
+      />
+
+      {/* Success Modal */}
+      <Modal
+        isOpen={successModal.isOpen}
+        onClose={() => setSuccessModal({ isOpen: false, message: '' })}
+        title="Success"
+        message={successModal.message}
+        type="success"
+      />
+    </div>
+  );
+}
+
 function WeeklyActionPlan({
   week,
   phase,
@@ -489,24 +719,27 @@ function WeeklyActionPlan({
               <Calendar className="w-5 h-5 text-blue-600" />
               This Week's Activities
             </h3>
-            <ul className="space-y-3">
+            <ul className="space-y-4">
               {weekData.activities.map((activity, idx) => {
                 const taskId = `week${week}_${idx}`;
                 return (
-                  <li key={idx} className="flex items-start gap-3 text-lg group">
-                    <span className={`mt-2 w-2 h-2 rounded-full flex-shrink-0 ${
-                      activity.done ? 'bg-green-500' : 'bg-blue-500'
-                    }`} />
-                    <span className={`flex-1 ${activity.done ? 'line-through text-gray-500' : 'text-gray-700'}`}>
-                      {activity.task}
-                    </span>
-                    <button
-                      onClick={() => onAiChat(activity.task, taskId)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-purple-100 rounded text-purple-600"
-                      title="Get AI recommendation"
-                    >
-                      <MessageCircle className="w-5 h-5" />
-                    </button>
+                  <li key={idx} className="space-y-2" data-task-id={taskId}>
+                    <div className="flex items-start gap-3 text-lg group">
+                      <span className={`mt-2 w-2 h-2 rounded-full flex-shrink-0 ${
+                        activity.done ? 'bg-green-500' : 'bg-blue-500'
+                      }`} />
+                      <span className={`flex-1 ${activity.done ? 'line-through text-gray-500' : 'text-gray-700'}`}>
+                        {activity.task}
+                      </span>
+                      <button
+                        onClick={() => onAiChat(activity.task, taskId)}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-purple-100 rounded text-purple-600"
+                        title="Get AI recommendation"
+                      >
+                        <MessageCircle className="w-5 h-5" />
+                      </button>
+                    </div>
+                    <SavedTips taskId={taskId} />
                   </li>
                 );
               })}

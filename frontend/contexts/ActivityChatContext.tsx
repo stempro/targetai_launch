@@ -9,16 +9,25 @@ interface Message {
   timestamp: string;
 }
 
+interface FileAttachment {
+  name: string;
+  size: number;
+  url: string;
+}
+
 interface ActivityChatContextType {
   isOpen: boolean;
   currentTask: string | null;
   currentTaskId: string | null;
   messages: Message[];
   isLoading: boolean;
+  isAnchored: boolean;
+  setIsAnchored: (anchored: boolean) => void;
   openChat: (task: string, taskId: string) => void;
   closeChat: () => void;
-  sendMessage: (content: string) => Promise<void>;
+  sendMessage: (content: string, fileAttachments?: FileAttachment[]) => Promise<void>;
   clearHistory: () => void;
+  saveTip: (content: string) => Promise<void>;
 }
 
 const ActivityChatContext = createContext<ActivityChatContextType | undefined>(undefined);
@@ -29,6 +38,7 @@ export function ActivityChatProvider({ children }: { children: React.ReactNode }
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isAnchored, setIsAnchored] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const openChat = useCallback(async (task: string, taskId: string) => {
@@ -91,10 +101,11 @@ export function ActivityChatProvider({ children }: { children: React.ReactNode }
       abortControllerRef.current = null;
     }
     setIsOpen(false);
+    setIsAnchored(false);
   }, []);
 
   const sendMessage = useCallback(
-    async (content: string) => {
+    async (content: string, fileAttachments?: FileAttachment[]) => {
       if (!currentTaskId || !currentTask) return;
 
       // Add user message immediately
@@ -123,7 +134,8 @@ export function ActivityChatProvider({ children }: { children: React.ReactNode }
         ]);
 
         // Stream the response
-        const response = await fetch('/api/chat/activity/stream', {
+        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        const response = await fetch(`${API_BASE_URL}/api/chat/activity/stream`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -131,6 +143,7 @@ export function ActivityChatProvider({ children }: { children: React.ReactNode }
             task_description: currentTask,
             message: content,
             history: messages,
+            file_attachments: fileAttachments || [],
           }),
           signal: abortControllerRef.current.signal,
         });
@@ -211,6 +224,31 @@ export function ActivityChatProvider({ children }: { children: React.ReactNode }
     setMessages([]);
   }, []);
 
+  const saveTip = useCallback(
+    async (content: string) => {
+      if (!currentTaskId) {
+        throw new Error('No task selected');
+      }
+
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${API_BASE_URL}/api/chat/activity/save-tip/${currentTaskId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content,
+          timestamp: new Date().toISOString(),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save tip');
+      }
+
+      return response.json();
+    },
+    [currentTaskId]
+  );
+
   return (
     <ActivityChatContext.Provider
       value={{
@@ -219,10 +257,13 @@ export function ActivityChatProvider({ children }: { children: React.ReactNode }
         currentTaskId,
         messages,
         isLoading,
+        isAnchored,
+        setIsAnchored,
         openChat,
         closeChat,
         sendMessage,
         clearHistory,
+        saveTip,
       }}
     >
       {children}

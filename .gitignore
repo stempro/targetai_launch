@@ -84,7 +84,7 @@ admin_whitelist.json
 .settings/
 *.sublime-workspace
 .history
-
+* text=auto eol=lf
 # OS
 .DS_Store
 Thumbs.db
